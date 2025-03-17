@@ -7,9 +7,11 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from './ui/card'
 import { Input } from './ui/input';
 import { extractTextFromPDF } from '@/lib/pdf-utils';
 import { toast } from 'sonner';
-import ModelSelector from './ModelSelector';
+import AdvancedSettings from './AdvancedSettings';
 
-const FALLBACK_MODELS = ['llama2', 'mistral', 'gemma', 'phi'];
+const DEFAULT_SYSTEM_PROMPT = `You are a helpful assistant that answers questions based on the provided PDF content.
+Use only the information from the PDF to answer the question.
+If the answer cannot be found in the PDF content, say so clearly.`;
 
 const ChatInterface = () => {
   const [pdfContent, setPdfContent] = useState('');
@@ -19,7 +21,7 @@ const ChatInterface = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isPdfLoading, setIsPdfLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState('llama2');
-  const [showFallbackSelector, setShowFallbackSelector] = useState(false);
+  const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [isFullContent, setIsFullContent] = useState(false);
   const messagesEndRef = useRef(null);
 
@@ -108,9 +110,9 @@ What would you like to know about this PDF?`
     setSelectedModel(modelName);
   };
 
-  // Toggle fallback selector
-  const toggleFallbackSelector = () => {
-    setShowFallbackSelector(!showFallbackSelector);
+  // Handle system prompt change
+  const handleSystemPromptChange = (prompt) => {
+    setSystemPrompt(prompt);
   };
 
   // Handle sending a message
@@ -141,7 +143,8 @@ What would you like to know about this PDF?`
         body: JSON.stringify({
           pdfContent,
           query: userMessage.content,
-          model: selectedModel
+          model: selectedModel,
+          systemPrompt: systemPrompt
         }),
       });
       
@@ -156,8 +159,6 @@ What would you like to know about this PDF?`
     } catch (error) {
       console.error('Error getting response:', error);
       toast.error('Failed to get response from Ollama. Make sure it\'s running and the model is available.');
-      // Show fallback selector if there's an error
-      setShowFallbackSelector(true);
     } finally {
       setIsLoading(false);
     }
@@ -169,50 +170,18 @@ What would you like to know about this PDF?`
   }, [messages]);
 
   return (
-    <div className="flex flex-col h-full max-w-4xl mx-auto">
-      <ModelSelector onModelSelect={handleModelSelect} />
-      
-      {/* Fallback model selector */}
-      {showFallbackSelector && (
-        <Card className="mb-4">
-          <CardHeader>
-            <CardTitle className="text-lg">Fallback Model Selection</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm mb-2">If the model selector above isn't working, select a model from the list below:</p>
-            <div className="flex flex-wrap gap-2">
-              {FALLBACK_MODELS.map(model => (
-                <Button 
-                  key={model} 
-                  variant={selectedModel === model ? "default" : "outline"}
-                  onClick={() => handleModelSelect(model)}
-                >
-                  {model}
-                </Button>
-              ))}
-            </div>
-            <Button 
-              variant="link" 
-              className="mt-2 p-0 h-auto text-xs" 
-              onClick={toggleFallbackSelector}
-            >
-              Hide fallback selector
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+    <div className="flex flex-col h-full max-w-4xl mx-auto relative">
+      <AdvancedSettings 
+        selectedModel={selectedModel}
+        onModelSelect={handleModelSelect}
+        systemPrompt={systemPrompt}
+        onSystemPromptChange={handleSystemPromptChange}
+      />
       
       <Card className="flex-1 flex flex-col">
         <CardHeader>
           <CardTitle className="text-2xl font-bold">
             PDF Chat Assistant
-            <Button 
-              variant="link" 
-              className="ml-2 p-0 h-auto text-sm font-normal" 
-              onClick={toggleFallbackSelector}
-            >
-              {showFallbackSelector ? "Hide" : "Show"} model options
-            </Button>
           </CardTitle>
           <div className="mt-2">
             <FileInput onFileChange={handleFileChange} disabled={isPdfLoading} accept=".pdf" />
