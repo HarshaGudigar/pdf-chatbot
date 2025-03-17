@@ -8,6 +8,8 @@ import { Input } from './ui/input';
 import { extractTextFromPDF } from '@/lib/pdf-utils';
 import { toast } from 'sonner';
 import AdvancedSettings from './AdvancedSettings';
+import { ThemeToggle } from './theme-toggle';
+import { Send, FileText, Bot, User, AlertCircle } from 'lucide-react';
 
 const DEFAULT_SYSTEM_PROMPT = `You are a helpful assistant that answers questions based on the provided PDF content.
 Use only the information from the PDF to answer the question.
@@ -319,6 +321,20 @@ Alternatively, you can select a different model from the Settings panel in the t
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingResponse]);
 
+  // Get message icon based on role
+  const getMessageIcon = (role) => {
+    switch (role) {
+      case 'user':
+        return <User className="h-5 w-5 text-primary" />;
+      case 'assistant':
+        return <Bot className="h-5 w-5 text-green-500" />;
+      case 'system':
+        return <AlertCircle className="h-5 w-5 text-yellow-500" />;
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="flex flex-col h-full max-w-4xl mx-auto relative">
       <AdvancedSettings 
@@ -329,15 +345,15 @@ Alternatively, you can select a different model from the Settings panel in the t
         onParametersChange={handleParametersChange}
       />
       
-      <Card className="flex-1 flex flex-col">
-        <CardHeader>
-          <CardTitle className="text-2xl font-bold">
-            PDF Chat Assistant
-          </CardTitle>
-          <div className="mt-2">
-            <FileInput onFileChange={handleFileChange} disabled={isPdfLoading} accept=".pdf" />
+      <Card className="flex-1 flex flex-col shadow-lg border-t-4 border-t-primary">
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-2xl font-bold flex items-center gap-2">
+              <FileText className="h-6 w-6" />
+              PDF Chat Assistant
+            </CardTitle>
             {pdfName && (
-              <p className="text-sm text-muted-foreground mt-2">
+              <p className="text-sm text-muted-foreground mt-1">
                 Current PDF: <span className="font-medium">{pdfName}</span>
                 {isPdfLoading && <span className="ml-2 text-yellow-500">(Processing...)</span>}
                 {!isPdfLoading && <span className="ml-2 text-xs">
@@ -347,20 +363,34 @@ Alternatively, you can select a different model from the Settings panel in the t
                 </span>}
               </p>
             )}
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-sm text-muted-foreground">
               Current Model: <span className="font-medium">{selectedModel}</span>
               {modelParameters.temperature !== 0.7 && 
                 <span className="ml-2 text-xs">(Custom parameters applied)</span>
               }
             </p>
           </div>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+          </div>
         </CardHeader>
+        
+        <div className="px-4 py-2">
+          <FileInput 
+            onFileChange={handleFileChange} 
+            disabled={isPdfLoading} 
+            accept=".pdf" 
+            className="w-full"
+          />
+        </div>
+        
         <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.length === 0 ? (
             <div className="flex items-center justify-center h-full">
-              <div className="text-center text-muted-foreground">
-                <p>Upload a PDF and ask questions about it.</p>
-                <p className="text-sm mt-2">The AI will answer based on the PDF content.</p>
+              <div className="text-center text-muted-foreground max-w-md p-6 rounded-lg border border-dashed">
+                <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+                <h3 className="text-lg font-medium mb-2">Upload a PDF and ask questions about it</h3>
+                <p className="text-sm">The AI will analyze the PDF content and answer your questions based on what it finds.</p>
               </div>
             </div>
           ) : (
@@ -374,15 +404,27 @@ Alternatively, you can select a different model from the Settings panel in the t
                   }`}
                 >
                   <div
-                    className={`max-w-[80%] rounded-lg p-3 ${
+                    className={`flex max-w-[80%] rounded-lg p-3 ${
                       message.role === 'user'
-                        ? 'bg-primary text-primary-foreground'
+                        ? 'bg-primary text-primary-foreground ml-12'
                         : message.role === 'system'
                         ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100 text-xs'
-                        : 'bg-muted text-sm'
+                        : 'bg-muted text-sm mr-12'
                     }`}
                   >
-                    <p className="whitespace-pre-wrap">{message.content}</p>
+                    {message.role !== 'user' && (
+                      <div className="mr-2 mt-1 flex-shrink-0">
+                        {getMessageIcon(message.role)}
+                      </div>
+                    )}
+                    <div>
+                      <p className="whitespace-pre-wrap">{message.content}</p>
+                    </div>
+                    {message.role === 'user' && (
+                      <div className="ml-2 mt-1 flex-shrink-0">
+                        {getMessageIcon(message.role)}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -390,11 +432,16 @@ Alternatively, you can select a different model from the Settings panel in the t
               {/* Streaming response */}
               {streamingResponse && isGenerating && (
                 <div className="flex justify-start">
-                  <div className="max-w-[80%] rounded-lg p-3 bg-muted">
-                    <p className="whitespace-pre-wrap text-sm">{streamingResponse}</p>
-                    <div className="mt-1 flex items-center">
-                      <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse mr-1"></span>
-                      <span className="text-xs text-muted-foreground">Generating...</span>
+                  <div className="flex max-w-[80%] rounded-lg p-3 bg-muted mr-12">
+                    <div className="mr-2 mt-1 flex-shrink-0">
+                      <Bot className="h-5 w-5 text-green-500" />
+                    </div>
+                    <div>
+                      <p className="whitespace-pre-wrap text-sm">{streamingResponse}</p>
+                      <div className="mt-1 flex items-center">
+                        <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse mr-1"></span>
+                        <span className="text-xs text-muted-foreground">Generating...</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -403,13 +450,14 @@ Alternatively, you can select a different model from the Settings panel in the t
           )}
           <div ref={messagesEndRef} />
         </CardContent>
-        <CardFooter>
+        <CardFooter className="border-t p-4">
           <form onSubmit={handleSendMessage} className="w-full flex gap-2">
             <Input
               placeholder="Ask a question about the PDF..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               disabled={isLoading || !pdfContent || isPdfLoading}
+              className="flex-1"
             />
             {isLoading ? (
               <Button type="button" variant="destructive" onClick={cancelStreamingResponse}>
@@ -417,7 +465,7 @@ Alternatively, you can select a different model from the Settings panel in the t
               </Button>
             ) : (
               <Button type="submit" disabled={!pdfContent || isPdfLoading}>
-                {isPdfLoading ? 'Processing PDF...' : 'Send'}
+                {isPdfLoading ? 'Processing...' : <Send className="h-4 w-4" />}
               </Button>
             )}
           </form>

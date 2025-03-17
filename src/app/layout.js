@@ -1,14 +1,14 @@
-import { Inter } from "next/font/google";
-import "./globals.css";
-import { Toaster } from "@/components/ui/sonner";
-import { ThemeProvider } from "@/components/ThemeProvider";
+import './globals.css'
+import { Inter } from 'next/font/google'
+import { Toaster } from 'sonner'
+import { ThemeProvider } from '@/components/theme-provider'
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ['latin'] })
 
 export const metadata = {
-  title: "PDF Chat Assistant",
-  description: "Chat with your PDF documents using AI",
-};
+  title: 'PDF Chat Assistant',
+  description: 'Chat with your PDF documents using AI',
+}
 
 export default function RootLayout({ children }) {
   return (
@@ -21,9 +21,9 @@ export default function RootLayout({ children }) {
           disableTransitionOnChange
         >
           {children}
-          <Toaster />
+          <Toaster richColors position="top-center" />
         </ThemeProvider>
       </body>
     </html>
-  );
+  )
 }
