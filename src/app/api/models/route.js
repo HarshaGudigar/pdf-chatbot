@@ -1,4 +1,8 @@
 import { NextResponse } from 'next/server';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execPromise = promisify(exec);
 
 // Default models to return if Ollama API is not available
 const FALLBACK_MODELS = [
@@ -13,7 +17,39 @@ const FALLBACK_MODELS = [
 
 export async function GET() {
   try {
-    // Try to fetch models from Ollama API
+    // First try to use the ollama CLI command
+    try {
+      const { stdout } = await execPromise('ollama list', { timeout: 5000 });
+      
+      // Parse the output to extract model names
+      // The output format is typically:
+      // NAME            ID              SIZE    MODIFIED
+      // llama2:latest   ...             ...     ...
+      // mistral:latest  ...             ...     ...
+      
+      const lines = stdout.trim().split('\n');
+      
+      // Skip the header line
+      if (lines.length > 1) {
+        const modelLines = lines.slice(1);
+        const models = modelLines.map(line => {
+          // Extract the model name (first column)
+          const modelName = line.trim().split(/\s+/)[0];
+          // Remove the ":latest" suffix if present
+          return modelName.replace(/:latest$/, '');
+        });
+        
+        return NextResponse.json({ models });
+      }
+      
+      // If we got output but couldn't parse models, fall back to API
+      console.log('Could not parse models from ollama list output, falling back to API');
+    } catch (cliError) {
+      console.log('Error using ollama CLI:', cliError.message);
+      // Continue to the API fallback
+    }
+    
+    // If CLI approach fails, try the API
     const response = await fetch('http://localhost:11434/api/tags', {
       method: 'GET',
       headers: {

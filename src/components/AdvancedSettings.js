@@ -73,14 +73,14 @@ const AdvancedSettings = ({
         console.error('Error parsing saved settings:', error);
       }
     }
+    
+    // Fetch models on initial load
+    fetchModels();
   }, []);
 
   // Toggle panel open/closed
   const togglePanel = () => {
     setIsOpen(!isOpen);
-    if (!isOpen) {
-      fetchModels();
-    }
   };
 
   // Handle setting change
@@ -154,7 +154,14 @@ const AdvancedSettings = ({
           if (data.models.length > 0 && !data.models.includes(settings.model)) {
             handleSettingChange('model', data.models[0]);
           }
+          
+          // Show a toast if we're using fallback models
+          if (data.fallback) {
+            toast.warning("Using fallback model list. Ollama connection not detected.");
+          }
         }
+      } else {
+        toast.error("Failed to fetch models from Ollama");
       }
     } catch (error) {
       console.error('Error fetching models:', error);
@@ -234,6 +241,7 @@ const AdvancedSettings = ({
                   variant="outline" 
                   disabled={isLoading}
                   size="icon"
+                  title="Refresh model list"
                 >
                   <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
                 </Button>

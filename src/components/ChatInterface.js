@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { FileInput } from './ui/file-input';
 import { Button } from './ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from './ui/card';
@@ -30,7 +30,10 @@ const ChatInterface = () => {
     frequency_penalty: 0
   });
   const [isFullContent, setIsFullContent] = useState(false);
+  const [streamingResponse, setStreamingResponse] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
   const messagesEndRef = useRef(null);
+  const abortControllerRef = useRef(null);
 
   // Handle file upload
   const handleFileChange = async (file) => {
@@ -127,6 +130,25 @@ What would you like to know about this PDF?`
     setModelParameters(params);
   };
 
+  // Cancel ongoing streaming response
+  const cancelStreamingResponse = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsLoading(false);
+      setIsGenerating(false);
+      
+      // Add the partial response to messages
+      if (streamingResponse) {
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: streamingResponse + "\n\n[Response interrupted]" 
+        }]);
+        setStreamingResponse('');
+      }
+    }
+  };
+
   // Handle sending a message
   const handleSendMessage = async (e) => {
     e.preventDefault();
@@ -141,9 +163,15 @@ What would you like to know about this PDF?`
     const userMessage = { role: 'user', content: query };
     setMessages((prev) => [...prev, userMessage]);
     
-    // Clear input
+    // Clear input and reset streaming response
     setQuery('');
+    setStreamingResponse('');
     setIsLoading(true);
+    setIsGenerating(true);
+    
+    // Create a new AbortController for this request
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
     
     try {
       // Call API to get response
@@ -159,28 +187,137 @@ What would you like to know about this PDF?`
           systemPrompt: systemPrompt,
           parameters: modelParameters
         }),
+        signal
       });
       
-      if (!response.ok) {
-        throw new Error('Failed to get response');
+      // Check for non-streaming error responses
+      if (response.headers.get('content-type')?.includes('application/json')) {
+        try {
+          // Try to parse as JSON to see if it's an error response
+          const clonedResponse = response.clone();
+          const jsonData = await clonedResponse.json();
+          
+          // If we have a fallback response, use it
+          if (jsonData.fallbackResponse) {
+            setMessages(prev => [...prev, { 
+              role: 'assistant', 
+              content: jsonData.fallbackResponse 
+            }]);
+            setIsLoading(false);
+            setIsGenerating(false);
+            return;
+          }
+          
+          // Special handling for model not found errors
+          if (jsonData.error && jsonData.error.includes("Model") && jsonData.error.includes("not found")) {
+            const modelName = jsonData.error.match(/'([^']+)'/)?.[1] || selectedModel;
+            const helpfulMessage = `The model "${modelName}" is not installed in your Ollama instance.
+
+Here's how to install it:
+1. Open a terminal or command prompt
+2. Run: \`ollama pull ${modelName}\`
+3. Wait for the download to complete
+4. Try your question again
+
+Alternatively, you can select a different model from the Settings panel in the top-right corner.`;
+
+            setMessages(prev => [...prev, { 
+              role: 'system', 
+              content: helpfulMessage
+            }]);
+            setIsLoading(false);
+            setIsGenerating(false);
+            return;
+          }
+          
+          // If we have an error but no fallback, show the error
+          if (jsonData.error && !response.ok) {
+            throw new Error(jsonData.error);
+          }
+        } catch (jsonError) {
+          // If we can't parse as JSON or there's no error/fallback, continue with streaming
+          console.log('Not a JSON error response, continuing with stream handling');
+        }
       }
       
-      const data = await response.json();
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('API error response:', errorData);
+        throw new Error(`Failed to get response: ${response.status} ${response.statusText}`);
+      }
       
-      // Add AI response to chat
-      setMessages((prev) => [...prev, { role: 'assistant', content: data.response }]);
+      if (!response.body) {
+        throw new Error('Response body is null or undefined');
+      }
+      
+      // Process the streaming response
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let done = false;
+      let accumulatedResponse = '';
+      
+      while (!done) {
+        try {
+          const { value, done: doneReading } = await reader.read();
+          done = doneReading;
+          
+          if (done) {
+            // Add the complete response to messages
+            if (accumulatedResponse) {
+              setMessages(prev => [...prev, { role: 'assistant', content: accumulatedResponse }]);
+              setStreamingResponse('');
+              setIsGenerating(false);
+            } else if (streamingResponse) {
+              // Fallback in case we have streamingResponse but not accumulatedResponse
+              setMessages(prev => [...prev, { role: 'assistant', content: streamingResponse }]);
+              setStreamingResponse('');
+              setIsGenerating(false);
+            }
+            break;
+          }
+          
+          // Decode the chunk and append to the streaming response
+          if (value) {
+            const chunk = decoder.decode(value, { stream: true });
+            accumulatedResponse += chunk;
+            setStreamingResponse(accumulatedResponse);
+          }
+        } catch (readError) {
+          console.error('Error reading stream:', readError);
+          if (accumulatedResponse) {
+            // Save what we've got so far
+            setMessages(prev => [...prev, { 
+              role: 'assistant', 
+              content: accumulatedResponse + "\n\n[Error: Stream reading interrupted]" 
+            }]);
+          }
+          throw readError;
+        }
+      }
     } catch (error) {
-      console.error('Error getting response:', error);
-      toast.error('Failed to get response from Ollama. Make sure it\'s running and the model is available.');
+      // Don't show error if it was aborted
+      if (error.name !== 'AbortError') {
+        console.error('Error getting response:', error);
+        toast.error(`Failed to get response: ${error.message}. Make sure Ollama is running and the model is available.`);
+        
+        // Add error message to chat
+        setMessages(prev => [...prev, { 
+          role: 'system', 
+          content: `Error: ${error.message}. Please check that Ollama is running and try again.` 
+        }]);
+      }
+      setIsGenerating(false);
     } finally {
       setIsLoading(false);
+      setIsGenerating(false);
+      abortControllerRef.current = null;
     }
   };
 
   // Scroll to bottom of messages
-  React.useEffect(() => {
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, streamingResponse]);
 
   return (
     <div className="flex flex-col h-full max-w-4xl mx-auto relative">
@@ -227,27 +364,42 @@ What would you like to know about this PDF?`
               </div>
             </div>
           ) : (
-            messages.map((message, index) => (
-              <div
-                key={index}
-                className={`flex ${
-                  message.role === 'user' ? 'justify-end' : 
-                  message.role === 'system' ? 'justify-center' : 'justify-start'
-                }`}
-              >
+            <>
+              {messages.map((message, index) => (
                 <div
-                  className={`max-w-[80%] rounded-lg p-3 ${
-                    message.role === 'user'
-                      ? 'bg-primary text-primary-foreground'
-                      : message.role === 'system'
-                      ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100'
-                      : 'bg-muted'
+                  key={index}
+                  className={`flex ${
+                    message.role === 'user' ? 'justify-end' : 
+                    message.role === 'system' ? 'justify-center' : 'justify-start'
                   }`}
                 >
-                  <p className="whitespace-pre-wrap">{message.content}</p>
+                  <div
+                    className={`max-w-[80%] rounded-lg p-3 ${
+                      message.role === 'user'
+                        ? 'bg-primary text-primary-foreground'
+                        : message.role === 'system'
+                        ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100 text-xs'
+                        : 'bg-muted text-sm'
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap">{message.content}</p>
+                  </div>
                 </div>
-              </div>
-            ))
+              ))}
+              
+              {/* Streaming response */}
+              {streamingResponse && isGenerating && (
+                <div className="flex justify-start">
+                  <div className="max-w-[80%] rounded-lg p-3 bg-muted">
+                    <p className="whitespace-pre-wrap text-sm">{streamingResponse}</p>
+                    <div className="mt-1 flex items-center">
+                      <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse mr-1"></span>
+                      <span className="text-xs text-muted-foreground">Generating...</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
           )}
           <div ref={messagesEndRef} />
         </CardContent>
@@ -259,9 +411,15 @@ What would you like to know about this PDF?`
               onChange={(e) => setQuery(e.target.value)}
               disabled={isLoading || !pdfContent || isPdfLoading}
             />
-            <Button type="submit" disabled={isLoading || !pdfContent || isPdfLoading}>
-              {isLoading ? 'Thinking...' : isPdfLoading ? 'Processing PDF...' : 'Send'}
-            </Button>
+            {isLoading ? (
+              <Button type="button" variant="destructive" onClick={cancelStreamingResponse}>
+                Stop
+              </Button>
+            ) : (
+              <Button type="submit" disabled={!pdfContent || isPdfLoading}>
+                {isPdfLoading ? 'Processing PDF...' : 'Send'}
+              </Button>
+            )}
           </form>
         </CardFooter>
       </Card>
