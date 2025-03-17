@@ -4,9 +4,23 @@ const DEFAULT_SYSTEM_PROMPT = `You are a helpful assistant that answers question
 Use only the information from the PDF to answer the question.
 If the answer cannot be found in the PDF content, say so clearly.`;
 
+const DEFAULT_PARAMETERS = {
+  temperature: 0.7,
+  top_p: 0.9,
+  max_tokens: 2000,
+  presence_penalty: 0,
+  frequency_penalty: 0
+};
+
 export async function POST(request) {
   try {
-    const { pdfContent, query, model = 'llama2', systemPrompt } = await request.json();
+    const { 
+      pdfContent, 
+      query, 
+      model = 'llama2', 
+      systemPrompt,
+      parameters = {}
+    } = await request.json();
     
     if (!pdfContent || !query) {
       return NextResponse.json(
@@ -17,6 +31,12 @@ export async function POST(request) {
 
     // Use the provided system prompt or fall back to the default
     const finalSystemPrompt = systemPrompt || DEFAULT_SYSTEM_PROMPT;
+    
+    // Merge default parameters with provided parameters
+    const finalParameters = {
+      ...DEFAULT_PARAMETERS,
+      ...parameters
+    };
     
     // Prepare the prompt with context
     const messages = [
@@ -40,6 +60,13 @@ export async function POST(request) {
         model: model,
         messages: messages,
         stream: false,
+        options: {
+          temperature: finalParameters.temperature,
+          top_p: finalParameters.top_p,
+          num_predict: finalParameters.max_tokens,
+          presence_penalty: finalParameters.presence_penalty,
+          frequency_penalty: finalParameters.frequency_penalty
+        }
       }),
     });
 

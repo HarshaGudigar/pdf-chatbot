@@ -22,6 +22,13 @@ const ChatInterface = () => {
   const [isPdfLoading, setIsPdfLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState('llama2');
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
+  const [modelParameters, setModelParameters] = useState({
+    temperature: 0.7,
+    top_p: 0.9,
+    max_tokens: 2000,
+    presence_penalty: 0,
+    frequency_penalty: 0
+  });
   const [isFullContent, setIsFullContent] = useState(false);
   const messagesEndRef = useRef(null);
 
@@ -115,6 +122,11 @@ What would you like to know about this PDF?`
     setSystemPrompt(prompt);
   };
 
+  // Handle model parameters change
+  const handleParametersChange = (params) => {
+    setModelParameters(params);
+  };
+
   // Handle sending a message
   const handleSendMessage = async (e) => {
     e.preventDefault();
@@ -144,7 +156,8 @@ What would you like to know about this PDF?`
           pdfContent,
           query: userMessage.content,
           model: selectedModel,
-          systemPrompt: systemPrompt
+          systemPrompt: systemPrompt,
+          parameters: modelParameters
         }),
       });
       
@@ -176,6 +189,7 @@ What would you like to know about this PDF?`
         onModelSelect={handleModelSelect}
         systemPrompt={systemPrompt}
         onSystemPromptChange={handleSystemPromptChange}
+        onParametersChange={handleParametersChange}
       />
       
       <Card className="flex-1 flex flex-col">
@@ -198,6 +212,9 @@ What would you like to know about this PDF?`
             )}
             <p className="text-sm text-muted-foreground mt-1">
               Current Model: <span className="font-medium">{selectedModel}</span>
+              {modelParameters.temperature !== 0.7 && 
+                <span className="ml-2 text-xs">(Custom parameters applied)</span>
+              }
             </p>
           </div>
         </CardHeader>

@@ -2,29 +2,78 @@
 
 import React, { useState, useEffect } from 'react';
 import { Button } from './ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
+import { Slider } from './ui/slider';
 import { toast } from 'sonner';
-import { X } from 'lucide-react';
+import { X, RefreshCw, Info } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 
 const DEFAULT_SYSTEM_PROMPT = `You are a helpful assistant that answers questions based on the provided PDF content.
 Use only the information from the PDF to answer the question.
 If the answer cannot be found in the PDF content, say so clearly.`;
 
+const DEFAULT_SETTINGS = {
+  model: 'llama2',
+  systemPrompt: DEFAULT_SYSTEM_PROMPT,
+  temperature: 0.7,
+  topP: 0.9,
+  maxTokens: 2000,
+  presencePenalty: 0,
+  frequencyPenalty: 0
+};
+
 const AdvancedSettings = ({ 
   selectedModel, 
   onModelSelect, 
   systemPrompt = DEFAULT_SYSTEM_PROMPT,
-  onSystemPromptChange
+  onSystemPromptChange,
+  onParametersChange
 }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [modelName, setModelName] = useState(selectedModel);
-  const [customPrompt, setCustomPrompt] = useState(systemPrompt);
+  const [settings, setSettings] = useState({
+    model: selectedModel,
+    systemPrompt: systemPrompt,
+    temperature: 0.7,
+    topP: 0.9,
+    maxTokens: 2000,
+    presencePenalty: 0,
+    frequencyPenalty: 0
+  });
   const [availableModels, setAvailableModels] = useState([
     'llama2', 'mistral', 'gemma', 'phi', 'llama3', 'mixtral'
   ]);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Load settings from session storage on initial render
+  useEffect(() => {
+    const savedSettings = sessionStorage.getItem('pdfChatSettings');
+    if (savedSettings) {
+      try {
+        const parsedSettings = JSON.parse(savedSettings);
+        setSettings(prevSettings => ({
+          ...prevSettings,
+          ...parsedSettings
+        }));
+        
+        // Apply loaded settings to parent component
+        onModelSelect(parsedSettings.model);
+        onSystemPromptChange(parsedSettings.systemPrompt);
+        if (onParametersChange) {
+          onParametersChange({
+            temperature: parsedSettings.temperature,
+            top_p: parsedSettings.topP,
+            max_tokens: parsedSettings.maxTokens,
+            presence_penalty: parsedSettings.presencePenalty,
+            frequency_penalty: parsedSettings.frequencyPenalty
+          });
+        }
+      } catch (error) {
+        console.error('Error parsing saved settings:', error);
+      }
+    }
+  }, []);
 
   // Toggle panel open/closed
   const togglePanel = () => {
@@ -34,29 +83,57 @@ const AdvancedSettings = ({
     }
   };
 
-  // Handle model change
-  const handleModelChange = (e) => {
-    setModelName(e.target.value);
-  };
-
-  // Handle system prompt change
-  const handlePromptChange = (e) => {
-    setCustomPrompt(e.target.value);
+  // Handle setting change
+  const handleSettingChange = (key, value) => {
+    setSettings(prev => ({
+      ...prev,
+      [key]: value
+    }));
   };
 
   // Apply settings
   const applySettings = () => {
-    onModelSelect(modelName);
-    onSystemPromptChange(customPrompt);
-    toast.success('Settings applied');
+    // Update parent component
+    onModelSelect(settings.model);
+    onSystemPromptChange(settings.systemPrompt);
+    
+    if (onParametersChange) {
+      onParametersChange({
+        temperature: settings.temperature,
+        top_p: settings.topP,
+        max_tokens: settings.maxTokens,
+        presence_penalty: settings.presencePenalty,
+        frequency_penalty: settings.frequencyPenalty
+      });
+    }
+    
+    // Save to session storage
+    sessionStorage.setItem('pdfChatSettings', JSON.stringify(settings));
+    
+    toast.success('Settings applied and saved');
   };
 
   // Reset to defaults
   const resetDefaults = () => {
-    setModelName('llama2');
-    setCustomPrompt(DEFAULT_SYSTEM_PROMPT);
-    onModelSelect('llama2');
-    onSystemPromptChange(DEFAULT_SYSTEM_PROMPT);
+    setSettings(DEFAULT_SETTINGS);
+    
+    // Update parent component
+    onModelSelect(DEFAULT_SETTINGS.model);
+    onSystemPromptChange(DEFAULT_SETTINGS.systemPrompt);
+    
+    if (onParametersChange) {
+      onParametersChange({
+        temperature: DEFAULT_SETTINGS.temperature,
+        top_p: DEFAULT_SETTINGS.topP,
+        max_tokens: DEFAULT_SETTINGS.maxTokens,
+        presence_penalty: DEFAULT_SETTINGS.presencePenalty,
+        frequency_penalty: DEFAULT_SETTINGS.frequencyPenalty
+      });
+    }
+    
+    // Clear from session storage
+    sessionStorage.removeItem('pdfChatSettings');
+    
     toast.success('Settings reset to defaults');
   };
 
@@ -72,10 +149,16 @@ const AdvancedSettings = ({
         const data = await response.json();
         if (data.models && Array.isArray(data.models)) {
           setAvailableModels(data.models);
+          
+          // If current model is not in the list, select the first available model
+          if (data.models.length > 0 && !data.models.includes(settings.model)) {
+            handleSettingChange('model', data.models[0]);
+          }
         }
       }
     } catch (error) {
       console.error('Error fetching models:', error);
+      toast.error('Failed to fetch models');
     } finally {
       setIsLoading(false);
     }
@@ -83,9 +166,21 @@ const AdvancedSettings = ({
 
   // Update local state when props change
   useEffect(() => {
-    setModelName(selectedModel);
-    setCustomPrompt(systemPrompt);
+    setSettings(prev => ({
+      ...prev,
+      model: selectedModel,
+      systemPrompt: systemPrompt
+    }));
   }, [selectedModel, systemPrompt]);
+
+  // Parameter info tooltips
+  const parameterInfo = {
+    temperature: "Controls randomness. Lower values make responses more focused and deterministic.",
+    topP: "Controls diversity. Lower values make responses more focused on likely tokens.",
+    maxTokens: "Maximum number of tokens to generate in the response.",
+    presencePenalty: "Reduces repetition by penalizing tokens that have already appeared in the text.",
+    frequencyPenalty: "Reduces repetition by penalizing tokens that appear frequently in the generated text."
+  };
 
   return (
     <>
@@ -109,43 +204,205 @@ const AdvancedSettings = ({
             </Button>
           </div>
           
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="flex-1 overflow-y-auto p-4 space-y-6">
+            {/* Model Selection */}
             <div>
               <label className="block text-sm font-medium mb-1">
                 Ollama Model
               </label>
               <div className="flex gap-2">
-                <Input
-                  value={modelName}
-                  onChange={handleModelChange}
-                  placeholder="Enter model name (e.g., llama2)"
-                  list="advanced-model-options"
-                  disabled={isLoading}
-                  className="flex-1"
-                />
-                <datalist id="advanced-model-options">
-                  {availableModels.map((model) => (
-                    <option key={model} value={model} />
-                  ))}
-                </datalist>
+                <div className="flex-1">
+                  <Select 
+                    value={settings.model} 
+                    onValueChange={(value) => handleSettingChange('model', value)}
+                    disabled={isLoading}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableModels.map((model) => (
+                        <SelectItem key={model} value={model}>
+                          {model}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <Button 
                   onClick={fetchModels} 
                   variant="outline" 
                   disabled={isLoading}
-                  size="sm"
+                  size="icon"
                 >
-                  Refresh
+                  <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
                 </Button>
               </div>
             </div>
             
+            {/* Temperature */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm font-medium">
+                  Temperature
+                </label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-5 w-5 p-0">
+                        <Info className="h-3.5 w-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs text-xs">{parameterInfo.temperature}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <div className="flex items-center gap-2">
+                <Slider 
+                  value={[settings.temperature]} 
+                  min={0} 
+                  max={2} 
+                  step={0.1}
+                  onValueChange={(value) => handleSettingChange('temperature', value[0])}
+                />
+                <span className="text-sm w-8 text-right">{settings.temperature}</span>
+              </div>
+            </div>
+            
+            {/* Top P */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm font-medium">
+                  Top P
+                </label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-5 w-5 p-0">
+                        <Info className="h-3.5 w-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs text-xs">{parameterInfo.topP}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <div className="flex items-center gap-2">
+                <Slider 
+                  value={[settings.topP]} 
+                  min={0} 
+                  max={1} 
+                  step={0.05}
+                  onValueChange={(value) => handleSettingChange('topP', value[0])}
+                />
+                <span className="text-sm w-8 text-right">{settings.topP}</span>
+              </div>
+            </div>
+            
+            {/* Max Tokens */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm font-medium">
+                  Max Tokens
+                </label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-5 w-5 p-0">
+                        <Info className="h-3.5 w-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs text-xs">{parameterInfo.maxTokens}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  min={100}
+                  max={8000}
+                  value={settings.maxTokens}
+                  onChange={(e) => handleSettingChange('maxTokens', parseInt(e.target.value) || 2000)}
+                  className="w-full"
+                />
+              </div>
+            </div>
+            
+            {/* Presence Penalty */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm font-medium">
+                  Presence Penalty
+                </label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-5 w-5 p-0">
+                        <Info className="h-3.5 w-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs text-xs">{parameterInfo.presencePenalty}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <div className="flex items-center gap-2">
+                <Slider 
+                  value={[settings.presencePenalty]} 
+                  min={-2} 
+                  max={2} 
+                  step={0.1}
+                  onValueChange={(value) => handleSettingChange('presencePenalty', value[0])}
+                />
+                <span className="text-sm w-8 text-right">{settings.presencePenalty}</span>
+              </div>
+            </div>
+            
+            {/* Frequency Penalty */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm font-medium">
+                  Frequency Penalty
+                </label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-5 w-5 p-0">
+                        <Info className="h-3.5 w-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs text-xs">{parameterInfo.frequencyPenalty}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <div className="flex items-center gap-2">
+                <Slider 
+                  value={[settings.frequencyPenalty]} 
+                  min={-2} 
+                  max={2} 
+                  step={0.1}
+                  onValueChange={(value) => handleSettingChange('frequencyPenalty', value[0])}
+                />
+                <span className="text-sm w-8 text-right">{settings.frequencyPenalty}</span>
+              </div>
+            </div>
+            
+            {/* System Prompt */}
             <div>
               <label className="block text-sm font-medium mb-1">
                 System Prompt
               </label>
               <Textarea
-                value={customPrompt}
-                onChange={handlePromptChange}
+                value={settings.systemPrompt}
+                onChange={(e) => handleSettingChange('systemPrompt', e.target.value)}
                 placeholder="Enter custom system prompt..."
                 className="min-h-[120px]"
               />
