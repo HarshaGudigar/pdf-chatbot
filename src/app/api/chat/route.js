@@ -42,7 +42,17 @@ export async function POST(request) {
     const messages = [
       {
         role: 'system',
-        content: finalSystemPrompt
+        content: `${finalSystemPrompt}
+
+IMPORTANT: The PDF content you're analyzing comes from an actual PDF file that was uploaded and processed. 
+The content starts with basic metadata about the file (name, page count, size, etc.) followed by the extracted text content.
+
+When answering questions:
+1. Focus on the text content after the metadata section
+2. If asked about chapters, sections, or specific content, search for relevant information in the text
+3. If the answer cannot be found in the text, say so clearly
+4. Be precise and factual, citing specific parts of the text when possible
+5. If the PDF content seems incomplete or poorly extracted, mention this limitation in your answer`
       },
       {
         role: 'user',
@@ -145,8 +155,8 @@ export async function POST(request) {
       
       // Provide a fallback response for common connection issues
       if (ollamaError.code === 'ECONNREFUSED' || ollamaError.message.includes('fetch failed')) {
-        // Create a simple fallback response
-        const fallbackResponse = `I'm unable to connect to the Ollama service to process your question about the PDF. 
+        // Create a fallback response
+        let fallbackResponse = `I'm unable to connect to the Ollama service to process your question about the PDF. 
 
 Here are some things you can try:
 

@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import AdvancedSettings from './AdvancedSettings';
 import { ThemeToggle } from './theme-toggle';
 import { Send, FileText, Bot, User, AlertCircle, File, Brain, Upload, MessageSquare, Settings } from 'lucide-react';
+import { Alert, AlertDescription } from './ui/alert';
 
 const DEFAULT_SYSTEM_PROMPT = `You are a helpful assistant that answers questions based on the provided PDF content.
 Use only the information from the PDF to answer the question.
@@ -59,22 +60,25 @@ const ChatInterface = () => {
       const text = await extractTextFromPDF(file);
       setPdfContent(text);
       
-      // Check if we got full content or just metadata
-      const isFullPdfContent = !text.includes('CONTENT SUMMARY:') || 
-                              !text.includes('The server was unable to extract the content');
+      // Check if we got content
+      const isContentAvailable = text && text.length > 100; // Simple check for reasonable content length
       
-      setIsFullContent(isFullPdfContent);
+      setIsFullContent(isContentAvailable);
       
       // Update the system message to indicate success
-      if (isFullPdfContent) {
+      if (isContentAvailable) {
+        // Extract page count if available
+        const pageCountMatch = text.match(/Page count: (\d+) pages/);
+        const pageCount = pageCountMatch ? pageCountMatch[1] : 'unknown';
+        
         setMessages([
           { 
             role: 'system', 
-            content: `PDF processed successfully: ${file.name}. Full content extracted.` 
+            content: `PDF processed successfully: ${file.name}. ${pageCount} pages extracted.` 
           },
           {
             role: 'assistant',
-            content: `I've successfully extracted the content from your PDF file: ${file.name}.
+            content: `I've successfully extracted the content from your PDF file: ${file.name} (${pageCount} pages).
 
 I can now answer questions based on the actual content of this PDF. What would you like to know?`
           }
@@ -85,24 +89,24 @@ I can now answer questions based on the actual content of this PDF. What would y
         setMessages([
           { 
             role: 'system', 
-            content: `PDF processed: ${file.name}. Only basic information available.` 
+            content: `PDF processed: ${file.name}. Limited content extracted.` 
           },
           {
             role: 'assistant',
             content: `I've processed your PDF file: ${file.name}.
 
-I was only able to extract basic information about this PDF, not its full content. 
+I was only able to extract limited content from this PDF. This might be due to:
+- Security restrictions on the PDF
+- The PDF containing mostly images or scanned text
+- Complex formatting that is difficult to extract
 
-To get the most helpful responses:
-1. When asking questions, please provide context about what the PDF contains
-2. Be specific with your questions
-3. If you need detailed analysis of the PDF content, consider using a desktop PDF reader
+I'll do my best to answer questions based on the available content, but my responses may be limited.
 
 What would you like to know about this PDF?`
           }
         ]);
         
-        toast.success('PDF uploaded successfully (basic info only)');
+        toast.success('PDF processed with limited content extraction');
       }
       
       setIsPdfLoading(false);
@@ -372,11 +376,12 @@ Alternatively, you can select a different model from the Settings panel in the t
           </div>
         </CardHeader>
         
-        <div className="px-4 py-2">
+        {/* File Upload Section - Moved outside of the scrollable area */}
+        <div className="px-6 py-3 border-b">
           <FileInput 
-            onFileChange={handleFileChange} 
-            disabled={isPdfLoading} 
+            onChange={handleFileChange} 
             accept=".pdf" 
+            isLoading={isPdfLoading}
             className="w-full"
           />
         </div>
@@ -388,7 +393,7 @@ Alternatively, you can select a different model from the Settings panel in the t
                 <FileText className="h-12 w-12 mx-auto mb-3 text-muted-foreground/60" />
                 <h3 className="text-lg font-medium mb-2">Upload a PDF to get started</h3>
                 <p className="text-sm mb-4">
-                  Drag and drop a PDF file above or click to browse. Once uploaded, you can ask questions about its content.
+                  Drag and drop a PDF file or click to browse. Once uploaded, you can ask questions about its content.
                 </p>
                 <div className="text-xs space-y-1">
                   <p className="flex items-center justify-center gap-1">
