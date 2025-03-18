@@ -1,6 +1,100 @@
 import { NextResponse } from 'next/server';
 import { PDFDocument } from 'pdf-lib';
 import PDFParser from 'pdf2json';
+import { writeFile, mkdir } from 'fs/promises';
+import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
+
+// Create output directory if it doesn't exist
+const ensureOutputDir = async () => {
+  const outputDir = path.join(process.cwd(), 'public', 'extracted');
+  try {
+    await mkdir(outputDir, { recursive: true });
+  } catch (error) {
+    if (error.code !== 'EEXIST') {
+      console.error('Error creating output directory:', error);
+    }
+  }
+  return outputDir;
+};
+
+// Generate HTML from extracted text
+const generateHtml = (filename, text, metadata) => {
+  const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Extracted PDF: ${filename}</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+      color: #333;
+    }
+    h1 {
+      color: #2c3e50;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 10px;
+    }
+    .metadata {
+      background-color: #f8f9fa;
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+    .page {
+      margin-bottom: 30px;
+      border: 1px solid #ddd;
+      padding: 15px;
+      border-radius: 5px;
+    }
+    .page-header {
+      background-color: #eee;
+      padding: 5px 10px;
+      margin: -15px -15px 15px -15px;
+      border-top-left-radius: 5px;
+      border-top-right-radius: 5px;
+      font-weight: bold;
+    }
+    pre {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+  </style>
+</head>
+<body>
+  <h1>Extracted PDF Content: ${filename}</h1>
+  <div class="metadata">
+    <p><strong>File:</strong> ${filename}</p>
+    <p><strong>Pages:</strong> ${metadata.pageCount}</p>
+    <p><strong>Size:</strong> ${metadata.fileSize} KB</p>
+    <p><strong>Type:</strong> ${metadata.fileType}</p>
+    <p><strong>Extraction Method:</strong> ${metadata.extractMethod}</p>
+    <p><strong>Extracted On:</strong> ${new Date().toLocaleString()}</p>
+  </div>
+  <div class="content">
+    ${text
+      .split('[Page ')
+      .filter(part => part.trim())
+      .map(part => {
+        const pageNumber = part.split(']')[0];
+        const pageContent = part.split(']').slice(1).join(']').trim();
+        return `<div class="page">
+          <div class="page-header">Page ${pageNumber}</div>
+          <pre>${pageContent}</pre>
+        </div>`;
+      })
+      .join('')}
+  </div>
+</body>
+</html>`;
+
+  return htmlContent;
+};
 
 export async function POST(request) {
   try {
@@ -125,13 +219,38 @@ Type: ${file.type}
 Last Modified: ${new Date(file.lastModified).toLocaleString()}
 
 ${text}`;
+
+      // Generate a unique filename for the extracted HTML
+      const uniqueId = uuidv4().slice(0, 8);
+      const safeFilename = file.name.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 20);
+      const htmlFilename = `${safeFilename}_${uniqueId}.html`;
       
-      // Return the extracted text and metadata
+      // Ensure output directory exists
+      const outputDir = await ensureOutputDir();
+      const htmlFilePath = path.join(outputDir, htmlFilename);
+      
+      // Create metadata for HTML generation
+      const htmlMetadata = {
+        pageCount,
+        fileSize: (file.size / 1024).toFixed(2),
+        fileType: file.type,
+        extractMethod
+      };
+      
+      // Generate and save HTML file
+      const htmlContent = generateHtml(file.name, text, htmlMetadata);
+      await writeFile(htmlFilePath, htmlContent);
+      
+      // Create public URL for the HTML file
+      const htmlUrl = `/extracted/${htmlFilename}`;
+      
+      // Return the extracted text, metadata, and HTML URL
       return NextResponse.json({
         text: contentSummary,
         metadata,
         fileInfo,
-        extractMethod
+        extractMethod,
+        htmlUrl
       });
     } catch (error) {
       console.error('PDF processing error:', error);
