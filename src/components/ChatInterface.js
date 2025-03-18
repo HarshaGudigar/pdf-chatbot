@@ -9,7 +9,7 @@ import { extractTextFromPDF } from '@/lib/pdf-utils';
 import { toast } from 'sonner';
 import AdvancedSettings from './AdvancedSettings';
 import { ThemeToggle } from './theme-toggle';
-import { Send, FileText, Bot, User, AlertCircle } from 'lucide-react';
+import { Send, FileText, Bot, User, AlertCircle, File, Brain, Upload, MessageSquare, Settings } from 'lucide-react';
 
 const DEFAULT_SYSTEM_PROMPT = `You are a helpful assistant that answers questions based on the provided PDF content.
 Use only the information from the PDF to answer the question.
@@ -325,7 +325,7 @@ Alternatively, you can select a different model from the Settings panel in the t
   const getMessageIcon = (role) => {
     switch (role) {
       case 'user':
-        return <User className="h-5 w-5 text-primary" />;
+        return <User className="h-5 w-5 text-white bg-primary-foreground p-0.5 rounded-full" />;
       case 'assistant':
         return <Bot className="h-5 w-5 text-green-500" />;
       case 'system':
@@ -346,28 +346,25 @@ Alternatively, you can select a different model from the Settings panel in the t
       />
       
       <Card className="flex-1 flex flex-col shadow-lg border-t-4 border-t-primary">
-        <CardHeader className="pb-2 flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-2xl font-bold flex items-center gap-2">
-              <FileText className="h-6 w-6" />
-              PDF Chat Assistant
+        <CardHeader className="flex flex-row items-center justify-between p-4 pb-2">
+          <div className="flex flex-col">
+            <CardTitle className="text-xl flex items-center gap-2">
+              {pdfName ? (
+                <>
+                  <File className="h-5 w-5" />
+                  <span className="truncate max-w-[200px]">{pdfName}</span>
+                </>
+              ) : (
+                'PDF Chat'
+              )}
             </CardTitle>
-            {pdfName && (
-              <p className="text-sm text-muted-foreground mt-1">
-                Current PDF: <span className="font-medium">{pdfName}</span>
-                {isPdfLoading && <span className="ml-2 text-yellow-500">(Processing...)</span>}
-                {!isPdfLoading && <span className="ml-2 text-xs">
-                  {isFullContent 
-                    ? '(Full content extracted)' 
-                    : '(Basic info only)'}
-                </span>}
-              </p>
-            )}
             <p className="text-sm text-muted-foreground">
-              Current Model: <span className="font-medium">{selectedModel}</span>
-              {modelParameters.temperature !== 0.7 && 
-                <span className="ml-2 text-xs">(Custom parameters applied)</span>
-              }
+              {selectedModel && (
+                <span className="flex items-center gap-1">
+                  <Brain className="h-3.5 w-3.5" />
+                  {selectedModel}
+                </span>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -388,9 +385,25 @@ Alternatively, you can select a different model from the Settings panel in the t
           {messages.length === 0 ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-center text-muted-foreground max-w-md p-6 rounded-lg border border-dashed">
-                <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-                <h3 className="text-lg font-medium mb-2">Upload a PDF and ask questions about it</h3>
-                <p className="text-sm">The AI will analyze the PDF content and answer your questions based on what it finds.</p>
+                <FileText className="h-12 w-12 mx-auto mb-3 text-muted-foreground/60" />
+                <h3 className="text-lg font-medium mb-2">Upload a PDF to get started</h3>
+                <p className="text-sm mb-4">
+                  Drag and drop a PDF file above or click to browse. Once uploaded, you can ask questions about its content.
+                </p>
+                <div className="text-xs space-y-1">
+                  <p className="flex items-center justify-center gap-1">
+                    <Upload className="h-3 w-3" />
+                    <span>Upload your PDF document</span>
+                  </p>
+                  <p className="flex items-center justify-center gap-1">
+                    <MessageSquare className="h-3 w-3" />
+                    <span>Ask questions about the content</span>
+                  </p>
+                  <p className="flex items-center justify-center gap-1">
+                    <Settings className="h-3 w-3" />
+                    <span>Customize AI settings as needed</span>
+                  </p>
+                </div>
               </div>
             </div>
           ) : (
@@ -406,22 +419,22 @@ Alternatively, you can select a different model from the Settings panel in the t
                   <div
                     className={`flex max-w-[80%] rounded-lg p-3 ${
                       message.role === 'user'
-                        ? 'bg-primary text-primary-foreground ml-12'
+                        ? 'bg-primary text-primary-foreground ml-12 shadow-sm'
                         : message.role === 'system'
-                        ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100 text-xs'
-                        : 'bg-muted text-sm mr-12'
+                        ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/70 dark:text-yellow-100 text-xs shadow-sm'
+                        : 'bg-muted text-sm mr-12 shadow-sm'
                     }`}
                   >
                     {message.role !== 'user' && (
-                      <div className="mr-2 mt-1 flex-shrink-0">
+                      <div className="mr-2 mt-0.5 flex-shrink-0">
                         {getMessageIcon(message.role)}
                       </div>
                     )}
-                    <div>
+                    <div className={message.role === 'user' ? 'text-sm font-medium' : ''}>
                       <p className="whitespace-pre-wrap">{message.content}</p>
                     </div>
                     {message.role === 'user' && (
-                      <div className="ml-2 mt-1 flex-shrink-0">
+                      <div className="ml-2 mt-0.5 flex-shrink-0">
                         {getMessageIcon(message.role)}
                       </div>
                     )}
@@ -432,15 +445,19 @@ Alternatively, you can select a different model from the Settings panel in the t
               {/* Streaming response */}
               {streamingResponse && isGenerating && (
                 <div className="flex justify-start">
-                  <div className="flex max-w-[80%] rounded-lg p-3 bg-muted mr-12">
-                    <div className="mr-2 mt-1 flex-shrink-0">
+                  <div className="flex max-w-[80%] rounded-lg p-3 bg-muted mr-12 shadow-sm">
+                    <div className="mr-2 mt-0.5 flex-shrink-0">
                       <Bot className="h-5 w-5 text-green-500" />
                     </div>
                     <div>
                       <p className="whitespace-pre-wrap text-sm">{streamingResponse}</p>
-                      <div className="mt-1 flex items-center">
-                        <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse mr-1"></span>
-                        <span className="text-xs text-muted-foreground">Generating...</span>
+                      <div className="mt-2 flex items-center">
+                        <div className="flex space-x-1.5">
+                          <span className="inline-block h-2 w-2 rounded-full bg-primary animate-smooth-pulse" style={{ animationDelay: "0ms" }}></span>
+                          <span className="inline-block h-2 w-2 rounded-full bg-primary animate-smooth-pulse" style={{ animationDelay: "300ms" }}></span>
+                          <span className="inline-block h-2 w-2 rounded-full bg-primary animate-smooth-pulse" style={{ animationDelay: "600ms" }}></span>
+                        </div>
+                        <span className="text-xs text-muted-foreground ml-2">Generating...</span>
                       </div>
                     </div>
                   </div>
